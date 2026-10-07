@@ -1,0 +1,5 @@
+# Protect configuration, database and helper files from direct web access.
+<FilesMatch "^(config(\.local)?\.php|.*\.sqlite.*)$">
+    Require all denied
+</FilesMatch>
+DirectoryIndex index.html

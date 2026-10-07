@@ -1,0 +1,9 @@
+config.local.php
+data/*
+!data/.htaccess
+tracks/uploads/*
+media/*
+!media/.gitkeep
+!media/.htaccess
+!tracks/uploads/.gitkeep
+!tracks/uploads/.htaccess
