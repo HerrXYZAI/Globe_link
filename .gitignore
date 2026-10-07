@@ -7,3 +7,4 @@ media/*
 !media/.htaccess
 !tracks/uploads/.gitkeep
 !tracks/uploads/.htaccess
+_site/

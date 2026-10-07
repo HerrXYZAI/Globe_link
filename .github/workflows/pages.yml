@@ -1,0 +1,52 @@
+name: Deploy demo to GitHub Pages
+
+# Builds a static snapshot of the globe (tools/build-static.php) and publishes it
+# with GitHub Pages. Requires Settings → Pages → Source: "GitHub Actions".
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    # Only the default branch is published.
+    if: github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_sqlite, simplexml, mbstring
+          coverage: none
+
+      - name: Lint PHP
+        run: for f in *.php lib/*.php tools/*.php; do php -l "$f"; done
+
+      - name: Build static site
+        run: php tools/build-static.php _site
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

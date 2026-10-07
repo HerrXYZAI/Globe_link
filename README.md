@@ -97,6 +97,24 @@ By default the globe uses Esri World Imagery tiles. Set `tile_url` to another
 Follow the tile provider's usage terms. If you set `tile_url` to `''`, the globe
 uses a static NASA Blue Marble texture.
 
+## Live demo / static export (GitHub Pages)
+
+GitHub Pages cannot run PHP. Instead, `tools/build-static.php` exports a **static
+snapshot** of the globe: `index.html`, `assets/`, `media/` and an `api.json` file with
+all visible tracks and markers. The configuration view is not part of the export.
+
+```bash
+php tools/build-static.php _site      # then upload _site/ to any static web host
+```
+
+The workflow `.github/workflows/pages.yml` runs this export on every push to the
+default branch and publishes the result with GitHub Pages. Because CI starts with an
+empty database, the demo shows the bundled example tracks and marker.
+
+One-time setup: **Settings → Pages → Build and deployment → Source: GitHub Actions**.
+Then re-run the workflow under the **Actions** tab, or push a commit. The demo is
+served at `https://<user>.github.io/<repo>/`.
+
 ## Embedding in WordPress
 
 Put the globe in a page or post with an iframe, for example in a "Custom HTML" block:
@@ -122,6 +140,7 @@ api.php             JSON endpoint with all visible tracks
 admin.php           password-protected configuration view
 config.php          settings (override in config.local.php)
 lib/bootstrap.php   database, GPX/KML/GeoJSON parsing, caching
+tools/              static export for GitHub Pages / static hosting
 assets/             JS/CSS and example preview images
 tracks/examples/    example GPX files
 tracks/uploads/     GPS files uploaded in the configuration view

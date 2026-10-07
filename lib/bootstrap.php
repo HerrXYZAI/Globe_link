@@ -85,7 +85,8 @@ function db(): PDO
 /** Insert the bundled example tracks on first start so the globe is not empty. */
 function seed_examples(PDO $pdo): void
 {
-    if ((int)$pdo->query('SELECT COUNT(*) FROM tracks')->fetchColumn() > 0) {
+    if ((int)$pdo->query('SELECT COUNT(*) FROM tracks')->fetchColumn() > 0
+        || (int)$pdo->query('SELECT COUNT(*) FROM markers')->fetchColumn() > 0) {
         return;
     }
     $examples = [
@@ -100,6 +101,9 @@ function seed_examples(PDO $pdo): void
     foreach ($examples as $i => [$name, $path, $text, $img, $color]) {
         $st->execute([$name, $path, $text, $img, 'https://wordpress.org/', $color, $i + 1]);
     }
+    $pdo->prepare('INSERT INTO markers (name, lat, lng, description, image, link, sort_order) VALUES (?, ?, ?, ?, ?, ?, 1)')
+        ->execute(['Zugspitze summit', 47.4211, 10.9853, 'At 2,962 m the highest mountain in Germany – a single marker set by its GPS coordinates.',
+            'assets/examples/alpine.svg', 'https://wordpress.org/']);
 }
 
 function setting(string $key, ?string $default = null): ?string
@@ -628,4 +632,65 @@ function handle_image_upload(array $file): ?string
         throw new RuntimeException('Could not store the uploaded image');
     }
     return rtrim((string)cfg('media_url'), '/') . '/' . $name;
+}
+
+/** Everything the globe page needs: display settings, visible tracks (with geometry) and markers. */
+function globe_payload(): array
+{
+    $tracks = [];
+    $rows = db()->query('SELECT * FROM tracks WHERE visible = 1 ORDER BY sort_order, name')->fetchAll();
+    foreach ($rows as $row) {
+        try {
+            $geo = track_geometry($row);
+        } catch (Throwable $e) {
+            continue; // Broken tracks are listed with their error in the configuration view.
+        }
+        // Manually entered dates win over the timestamps found in the GPS file.
+        if ($row['start_date'] || $row['end_date']) {
+            $start = $row['start_date'] ?: $row['end_date'];
+            $end = $row['end_date'] ?: $start;
+        } else {
+            $start = isset($geo['start_time']) ? substr($geo['start_time'], 0, 10) : null;
+            $end = isset($geo['end_time']) ? substr($geo['end_time'], 0, 10) : null;
+        }
+        $tracks[] = [
+            'id' => (int)$row['id'],
+            'name' => $row['name'],
+            'description' => $row['description'],
+            'image' => $row['image'],
+            'link' => $row['link'],
+            'color' => $row['color'],
+            'distance_km' => $geo['distance_km'],
+            'start_date' => $start,
+            'end_date' => $end,
+            'segments' => $geo['segments'],
+        ];
+    }
+
+    $markers = [];
+    foreach (db()->query('SELECT * FROM markers WHERE visible = 1 ORDER BY sort_order, name')->fetchAll() as $row) {
+        $markers[] = [
+            'id' => (int)$row['id'],
+            'name' => $row['name'],
+            'description' => $row['description'],
+            'image' => $row['image'],
+            'link' => $row['link'],
+            'color' => $row['color'],
+            'lat' => (float)$row['lat'],
+            'lng' => (float)$row['lng'],
+        ];
+    }
+
+    return [
+        'title' => cfg('site_title'),
+        'tileUrl' => cfg('tile_url'),
+        'tileAttribution' => cfg('tile_attribution'),
+        'tileMaxLevel' => (int)cfg('tile_max_level'),
+        'globeImage' => cfg('globe_image'),
+        'bumpImage' => cfg('bump_image'),
+        'backgroundImage' => cfg('background_image'),
+        'linkTargetBlank' => (bool)cfg('link_target_blank'),
+        'tracks' => $tracks,
+        'markers' => $markers,
+    ];
 }

@@ -306,7 +306,8 @@
     async function load() {
         let cfg;
         try {
-            const res = await fetch('api.php', { headers: { Accept: 'application/json' } });
+            const source = document.querySelector('meta[name="globe-link-data"]')?.content || 'api.php';
+            const res = await fetch(source, { headers: { Accept: 'application/json' } });
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             cfg = await res.json();
         } catch (err) {
