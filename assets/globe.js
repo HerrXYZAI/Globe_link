@@ -308,7 +308,10 @@
         try {
             const source = document.querySelector('meta[name="globe-link-data"]')?.content || 'api.php';
             const res = await fetch(source, { headers: { Accept: 'application/json' } });
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            if (!res.ok) {
+                const body = await res.json().catch(() => null);
+                throw new Error(body && body.error ? `HTTP ${res.status}: ${body.error}` : `HTTP ${res.status}`);
+            }
             cfg = await res.json();
         } catch (err) {
             statusEl.textContent = `Tracks could not be loaded (${err.message}).`;

@@ -50,7 +50,16 @@ $config = [
     'link_target_blank' => true,
 ];
 
-if (is_file(__DIR__ . '/config.local.php')) {
+// The guard stops endless recursion when config.local.php is a full copy of this file
+// (a copy also contains this block and would otherwise keep loading itself).
+if (!defined('GLOBE_LINK_LOCAL_CONFIG_LOADED') && is_file(__DIR__ . '/config.local.php')) {
+    define('GLOBE_LINK_LOCAL_CONFIG_LOADED', true);
+    $code = (string)file_get_contents(__DIR__ . '/config.local.php');
+    if (str_contains($code, "/config.local.php'") && !str_contains($code, 'GLOBE_LINK_LOCAL_CONFIG_LOADED')) {
+        // A copy of an older config.php without the guard: requiring it would never return.
+        throw new RuntimeException('config.local.php is a copy of config.php and loads itself endlessly. '
+            . 'It should only contain the settings you change, e.g. <?php return [\'site_title\' => \'My Trips\'];');
+    }
     $local = require __DIR__ . '/config.local.php';
     if (is_array($local)) {
         $config = array_replace($config, $local);

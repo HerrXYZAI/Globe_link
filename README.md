@@ -57,7 +57,8 @@ php -S localhost:8000
 `config.php` holds all settings: site title, database location, base directory for
 relative track paths, map tiles, upload directory and maximum points per track. To
 change settings without editing that file, create `config.local.php`, which git
-ignores:
+ignores. Put **only the settings you change** in it; `config.local.example.php` is a
+template. Don't copy the whole `config.php` into it:
 
 ```php
 <?php
