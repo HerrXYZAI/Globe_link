@@ -143,6 +143,7 @@ config.php          settings (override in config.local.php)
 lib/bootstrap.php   database, GPX/KML/GeoJSON parsing, caching
 tools/              static export for GitHub Pages / static hosting
 assets/             JS/CSS and example preview images
+assets/vendor/      globe.gl library and earth/sky images (MIT), served locally, no CDN needed
 tracks/examples/    example GPX files
 tracks/uploads/     GPS files uploaded in the configuration view
 media/              preview images uploaded in the configuration view

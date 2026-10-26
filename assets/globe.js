@@ -242,9 +242,30 @@
     listToggle.addEventListener('click', () => toggleList());
 
     // ------------------------------------------------------------------ init
+    const OCEAN_COLOR = '#1d4e7a';
+
+    /**
+     * Resolves true once an image has loaded. globe.gl draws nothing until every
+     * image it was given has loaded, so a single missing or blocked image (e.g. a
+     * CDN error) would leave the whole globe black. Images are only handed over
+     * after this check succeeded.
+     */
+    function whenLoaded(url) {
+        return new Promise((resolve) => {
+            if (!url) return resolve(false);
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = () => resolve(true);
+            img.onerror = () => {
+                console.warn(`Globe Link: image could not be loaded and is skipped: ${url}`);
+                resolve(false);
+            };
+            img.src = url;
+        });
+    }
+
     function initGlobe(cfg) {
         globe = new Globe(el, { rendererConfig: { antialias: true } })
-            .backgroundImageUrl(cfg.backgroundImage || null)
             .showAtmosphere(true)
             .atmosphereColor('#7cc4ff')
             .atmosphereAltitude(0.15)
@@ -290,8 +311,15 @@
                 .globeTileEngineUrl((x, y, l) => cfg.tileUrl.replace('{x}', x).replace('{y}', y).replace('{z}', l))
                 .globeTileEngineMaxLevel(cfg.tileMaxLevel || 17);
         } else {
-            globe.globeImageUrl(cfg.globeImage).bumpImageUrl(cfg.bumpImage || null);
+            whenLoaded(cfg.globeImage).then((ok) => {
+                if (ok) globe.globeImageUrl(cfg.globeImage);
+                else globe.globeMaterial().color.set(OCEAN_COLOR);
+            });
+            whenLoaded(cfg.bumpImage).then((ok) => ok && globe.bumpImageUrl(cfg.bumpImage));
         }
+        // Plain ocean colour under the map tiles, visible while they load or if they fail.
+        if (cfg.tileUrl) globe.globeMaterial().color.set(OCEAN_COLOR);
+        whenLoaded(cfg.backgroundImage).then((ok) => ok && globe.backgroundImageUrl(cfg.backgroundImage));
         document.getElementById('attribution').textContent = cfg.tileUrl ? (cfg.tileAttribution || '') : '';
 
         const resize = () => globe.width(window.innerWidth).height(window.innerHeight);

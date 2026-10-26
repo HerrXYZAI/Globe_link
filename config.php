@@ -41,10 +41,12 @@ $config = [
     'tile_attribution' => 'Imagery © Esri, Maxar, Earthstar Geographics',
     'tile_max_level'   => 17,
 
-    // Static earth texture (used when tile_url is empty) and background.
-    'globe_image'      => 'https://unpkg.com/three-globe@2.45.3/example/img/earth-blue-marble.jpg',
-    'bump_image'       => 'https://unpkg.com/three-globe@2.45.3/example/img/earth-topology.png',
-    'background_image' => 'https://unpkg.com/three-globe@2.45.3/example/img/night-sky.png',
+    // Static earth texture (used when tile_url is empty) and background, shipped in
+    // assets/vendor/img so the globe does not depend on a CDN. Set background_image
+    // to '' for a plain dark background.
+    'globe_image'      => 'assets/vendor/img/earth-blue-marble.jpg',
+    'bump_image'       => 'assets/vendor/img/earth-topology.png',
+    'background_image' => 'assets/vendor/img/night-sky.png',
 
     // Open article links in a new tab.
     'link_target_blank' => true,
