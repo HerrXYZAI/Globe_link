@@ -147,18 +147,72 @@ function resolve_track_path(string $path): string
 
 function http_get(string $url, int $timeout = 15): string
 {
+    // Many WordPress security plugins and bot filters reject requests without
+    // browser-like headers, so send the usual ones.
+    $headers = [
+        'User-Agent: Mozilla/5.0 (compatible; GlobeLink/1.0; +https://github.com/HerrXYZAI/Globe_link)',
+        'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language: de,en;q=0.8',
+    ];
+    $fail = function (string $reason, ?int $status = null) use ($url): never {
+        $hint = in_array($status, [401, 403, 429, 503], true)
+            ? ' The site probably blocks automated requests (security plugin, firewall or bot protection).'
+            : '';
+        throw new RuntimeException("Could not download $url: $reason.$hint");
+    };
+
+    if (function_exists('curl_init')) {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS => 5,
+            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_TIMEOUT => $timeout,
+            CURLOPT_HTTPHEADER => $headers,
+            CURLOPT_ENCODING => '', // accept gzip/deflate
+            CURLOPT_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
+            CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
+        ]);
+        $body = curl_exec($ch);
+        $status = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+        $error = curl_error($ch);
+        curl_close($ch);
+        if ($body === false) {
+            $fail($error ?: 'unknown network error');
+        }
+        if ($status >= 400) {
+            $fail("the server answered HTTP $status", $status);
+        }
+        return $body;
+    }
+
+    if (!filter_var(ini_get('allow_url_fopen'), FILTER_VALIDATE_BOOLEAN)) {
+        $fail('PHP cannot open URLs on this server (allow_url_fopen is off and the curl extension is missing)');
+    }
     $ctx = stream_context_create([
         'http' => [
             'timeout' => $timeout,
             'follow_location' => 1,
-            'user_agent' => 'GlobeLink/1.0 (+track loader)',
+            'max_redirects' => 5,
+            'header' => implode("\r\n", $headers),
+            'ignore_errors' => true, // return the body of 4xx/5xx answers so the status can be reported
         ],
     ]);
-    $data = @file_get_contents($url, false, $ctx);
-    if ($data === false) {
-        throw new RuntimeException('Could not download ' . $url);
+    $body = @file_get_contents($url, false, $ctx);
+    $status = null;
+    foreach ($http_response_header ?? [] as $line) {
+        if (preg_match('#^HTTP/\S+\s+(\d{3})#', $line, $m)) {
+            $status = (int)$m[1]; // the last status line wins (after redirects)
+        }
     }
-    return $data;
+    if ($body === false) {
+        $fail(preg_replace('/^file_get_contents\([^)]*\): /', '', error_get_last()['message'] ?? 'unknown network error'));
+    }
+    if ($status !== null && $status >= 400) {
+        $fail("the server answered HTTP $status", $status);
+    }
+    return $body;
 }
 
 /** A key that changes whenever the underlying file changes. */

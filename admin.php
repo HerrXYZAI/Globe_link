@@ -118,7 +118,13 @@ function posted_common_fields(string $defaultColor): array
         $data['image'] = $uploadedImage;
     }
     if (!empty($_POST['fetch_meta']) && $data['link'] !== '') {
-        $meta = fetch_article_meta($data['link']);
+        try {
+            $meta = fetch_article_meta($data['link']);
+        } catch (Throwable $e) {
+            // Still save everything else; the fields can be filled in by hand.
+            flash($e->getMessage() . ' Name, text and image were not filled from the article.', 'warn');
+            $meta = ['title' => '', 'description' => '', 'image' => ''];
+        }
         foreach (['name' => 'title', 'description' => 'description', 'image' => 'image'] as $field => $key) {
             if ($data[$field] === '') {
                 $data[$field] = $meta[$key];
