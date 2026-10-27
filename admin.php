@@ -123,12 +123,28 @@ function posted_common_fields(string $defaultColor): array
         } catch (Throwable $e) {
             // Still save everything else; the fields can be filled in by hand.
             flash($e->getMessage() . ' Name, text and image were not filled from the article.', 'warn');
-            $meta = ['title' => '', 'description' => '', 'image' => ''];
+            $meta = ['title' => '', 'description' => '', 'image' => '', 'sources' => []];
         }
+        // Report what was filled and from where, so missing fields can be explained.
+        $labels = ['name' => 'name', 'description' => 'text', 'image' => 'image'];
+        $filled = $missing = [];
         foreach (['name' => 'title', 'description' => 'description', 'image' => 'image'] as $field => $key) {
-            if ($data[$field] === '') {
-                $data[$field] = $meta[$key];
+            if ($data[$field] !== '') {
+                continue; // only empty fields are filled
             }
+            if (($meta[$key] ?? '') !== '') {
+                $data[$field] = $meta[$key];
+                $filled[] = $labels[$field] . ' (' . $meta['sources'][$key] . ')';
+            } else {
+                $missing[] = $labels[$field];
+            }
+        }
+        if ($filled) {
+            flash('From the article: ' . implode(', ', $filled) . '.');
+        }
+        if ($missing && isset($meta['notes'])) { // no 'notes' when the download itself failed (already reported)
+            flash('Not found in the article: ' . implode(', ', $missing)
+                . (!empty($meta['notes']) ? ' – ' . implode('; ', $meta['notes']) : '') . '.', 'warn');
         }
     }
     return $data;

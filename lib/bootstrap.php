@@ -489,29 +489,147 @@ function track_geometry(array $track, bool $force = false): array
     }
 }
 
+/** Resolve a possibly relative URL (src="/wp-content/…", "//cdn…", "img.jpg") against the page URL. */
+function absolute_url(string $url, string $base): string
+{
+    $url = trim(html_entity_decode($url, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+    if ($url === '' || preg_match('#^[a-z][a-z0-9+.-]*:#i', $url)) {
+        return $url;
+    }
+    $p = parse_url($base);
+    $origin = ($p['scheme'] ?? 'https') . '://' . ($p['host'] ?? '') . (isset($p['port']) ? ':' . $p['port'] : '');
+    if (str_starts_with($url, '//')) {
+        return ($p['scheme'] ?? 'https') . ':' . $url;
+    }
+    if ($url[0] === '/') {
+        return $origin . $url;
+    }
+    return $origin . preg_replace('#/[^/]*$#', '/', $p['path'] ?? '/') . $url;
+}
+
+/** Plain text from an HTML fragment: no tags, entities decoded, whitespace collapsed. */
+function html_to_text(string $html): string
+{
+    $html = preg_replace('#<(script|style)\b.*?</\1>#is', ' ', $html);
+    $text = html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    return trim(preg_replace('/\s+/u', ' ', $text));
+}
+
+/** URL of the first image in an HTML fragment (handles lazy-loading attributes). */
+function first_image_in_html(string $html, string $base): string
+{
+    if (preg_match_all('#<img\b[^>]*>#i', $html, $imgs)) {
+        foreach ($imgs[0] as $img) {
+            foreach (['data-lazy-src', 'data-src', 'src'] as $attr) {
+                if (preg_match('#\s' . $attr . '\s*=\s*(["\'])(.*?)\1#is', $img, $m)
+                    && $m[2] !== '' && !str_starts_with($m[2], 'data:')
+                    && !preg_match('#(gravatar|emoji|pixel|spacer|avatar)#i', $m[2])) {
+                    return absolute_url($m[2], $base);
+                }
+            }
+        }
+    }
+    return '';
+}
+
 /**
- * Read Open Graph metadata (title, description, image) from a WordPress article.
+ * Read title, text and preview image of a (WordPress) article. Sources, in order:
+ *   1. Open Graph / meta tags (added by SEO plugins such as Yoast or Jetpack),
+ *   2. the WordPress REST API (clean title, excerpt, featured image), which a plain
+ *      WordPress install without SEO plugin offers via <link rel="alternate" type="application/json">,
+ *   3. the page itself (first image and first paragraph of the article, <title>).
+ * Returns ['title', 'description', 'image', 'sources' => [field => where it came from], 'notes' => [...]].
  */
 function fetch_article_meta(string $url): array
 {
     $html = http_get($url, 10);
+    $result = ['title' => '', 'description' => '', 'image' => '', 'sources' => [], 'notes' => []];
+    $set = function (string $field, string $value, string $source) use (&$result): void {
+        $value = trim($value);
+        if ($result[$field] === '' && $value !== '') {
+            $result[$field] = $value;
+            $result['sources'][$field] = $source;
+        }
+    };
+
+    // 1. Open Graph and meta tags
     $meta = [];
     if (preg_match_all('#<meta\s[^>]*>#i', $html, $tags)) {
         foreach ($tags[0] as $tag) {
-            if (preg_match('#(?:property|name)\s*=\s*["\'](og:title|og:description|og:image|description)["\']#i', $tag, $p)
+            if (preg_match('#(?:property|name)\s*=\s*["\'](og:title|og:description|og:image|og:site_name|description|twitter:image)["\']#i', $tag, $p)
                 && preg_match('#content\s*=\s*(["\'])(.*?)\1#is', $tag, $c)) {
                 $meta[strtolower($p[1])] ??= html_entity_decode($c[2], ENT_QUOTES | ENT_HTML5, 'UTF-8');
             }
         }
     }
-    if (empty($meta['og:title']) && preg_match('#<title[^>]*>(.*?)</title>#is', $html, $t)) {
-        $meta['og:title'] = html_entity_decode(trim($t[1]), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    $set('title', $meta['og:title'] ?? '', 'Open Graph tag');
+    $set('description', $meta['og:description'] ?? '', 'Open Graph tag');
+    $set('description', $meta['description'] ?? '', 'meta description');
+    $set('image', absolute_url($meta['og:image'] ?? $meta['twitter:image'] ?? '', $url), 'Open Graph tag');
+
+    // 2. WordPress REST API
+    if ($result['title'] === '' || $result['description'] === '' || $result['image'] === '') {
+        $api = null;
+        if (preg_match_all('#<link\b[^>]*>#i', $html, $links)) {
+            foreach ($links[0] as $link) {
+                if (preg_match('#type\s*=\s*["\']application/json["\']#i', $link)
+                    && preg_match('#href\s*=\s*(["\'])(.*?)\1#i', $link, $h)
+                    && preg_match('#(wp-json|rest_route=)#', $h[2])) {
+                    $api = absolute_url($h[2], $url);
+                    break;
+                }
+            }
+        }
+        if ($api === null) {
+            $result['notes'][] = 'no WordPress REST API link found on the page';
+        } else {
+            try {
+                $json = http_get($api . (str_contains($api, '?') ? '&' : '?') . '_embed=1', 10);
+                $post = json_decode(preg_replace('/^\xEF\xBB\xBF/', '', $json), true);
+                if (!is_array($post) || !isset($post['title'])) {
+                    throw new RuntimeException('unexpected answer');
+                }
+                $set('title', html_to_text($post['title']['rendered'] ?? ''), 'WordPress post title');
+                // Excerpts end with "[…]" or a "read more" link; drop both.
+                $excerpt = preg_replace('#<a\b[^>]*class=["\'][^"\']*more-link.*?</a>#is', '', $post['excerpt']['rendered'] ?? '');
+                $excerpt = preg_replace('/\s*(\[(…|&hellip;|\.\.\.)\]|\[&#8230;\])\s*$/u', '…', html_to_text($excerpt));
+                $set('description', $excerpt, 'WordPress excerpt');
+                $media = $post['_embedded']['wp:featuredmedia'][0] ?? null;
+                if (is_array($media)) {
+                    $sizes = $media['media_details']['sizes'] ?? [];
+                    // A medium-sized version is plenty for the hover window.
+                    $img = $sizes['medium_large']['source_url'] ?? $sizes['large']['source_url'] ?? $media['source_url'] ?? '';
+                    $set('image', $img, 'WordPress featured image');
+                }
+                $set('image', first_image_in_html($post['content']['rendered'] ?? '', $url), 'first image in the WordPress post');
+                $set('description', mb_strimwidth(html_to_text(
+                    preg_match('#<p\b[^>]*>(.*?)</p>#is', $post['content']['rendered'] ?? '', $pm) ? $pm[1] : ''), 0, 300, '…'),
+                    'first paragraph of the WordPress post');
+            } catch (Throwable $e) {
+                $result['notes'][] = 'WordPress REST API not usable (' . $e->getMessage() . ')';
+            }
+        }
     }
-    return [
-        'title' => trim($meta['og:title'] ?? ''),
-        'description' => trim($meta['og:description'] ?? $meta['description'] ?? ''),
-        'image' => trim($meta['og:image'] ?? ''),
-    ];
+
+    // 3. The page itself
+    $article = preg_match('#<article\b.*?</article>#is', $html, $am) ? $am[0] : $html;
+    $content = preg_match('#<div\b[^>]*class=["\'][^"\']*(entry-content|post-content|article-content)[^"\']*["\'][^>]*>(.*)#is', $article, $cm)
+        ? $cm[2] : $article;
+    $set('image', first_image_in_html($article, $url), 'first image on the page');
+    $set('description', mb_strimwidth(html_to_text(
+        preg_match('#<p\b[^>]*>(.*?)</p>#is', $content, $pm) ? $pm[1] : ''), 0, 300, '…'), 'first paragraph on the page');
+    if ($result['title'] === '' && preg_match('#<title[^>]*>(.*?)</title>#is', $html, $t)) {
+        $title = html_to_text($t[1]);
+        // "Post title – Site name": drop the site name.
+        $site = $meta['og:site_name'] ?? '';
+        $parts = preg_split('/\s+[–—|-]\s+/u', $title);
+        if (count($parts) > 1 && ($site === '' || end($parts) === $site)) {
+            array_pop($parts);
+            $title = implode(' – ', $parts);
+        }
+        $set('title', $title, 'page title');
+    }
+    return $result;
 }
 
 /**
