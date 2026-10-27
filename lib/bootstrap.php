@@ -515,6 +515,35 @@ function html_to_text(string $html): string
     return trim(preg_replace('/\s+/u', ' ', $text));
 }
 
+/**
+ * True for the texts WordPress shows instead of a password-protected post
+ * ("Dieser Inhalt ist passwortgeschützt …", "There is no excerpt because this is a protected post.").
+ */
+function is_protected_notice(string $text): bool
+{
+    return (bool)preg_match('/passwortgesch|password[ -]?protected|gesch(ü|ue)tzte[rn]? (Beitrag|Inhalt)|protected post|enter (the|your) password|Passwort ein/iu', $text);
+}
+
+/** Forms are never article content; drops e.g. WordPress' password form. */
+function strip_forms(string $html): string
+{
+    return preg_replace('#<form\b.*?</form>#is', ' ', $html) ?? $html;
+}
+
+/** Text of the first real paragraph (skips empty ones, captions-only and protection notices). */
+function first_paragraph(string $html): string
+{
+    if (preg_match_all('#<p\b[^>]*>(.*?)</p>#is', strip_forms($html), $m)) {
+        foreach ($m[1] as $p) {
+            $text = html_to_text($p);
+            if (mb_strlen($text) >= 15 && !is_protected_notice($text)) {
+                return mb_strimwidth($text, 0, 300, '…');
+            }
+        }
+    }
+    return '';
+}
+
 /** URL of the first image in an HTML fragment (handles lazy-loading attributes). */
 function first_image_in_html(string $html, string $base): string
 {
@@ -546,6 +575,9 @@ function fetch_article_meta(string $url): array
     $result = ['title' => '', 'description' => '', 'image' => '', 'sources' => [], 'notes' => []];
     $set = function (string $field, string $value, string $source) use (&$result): void {
         $value = trim($value);
+        if ($field === 'description' && is_protected_notice($value)) {
+            return; // never use WordPress' "this post is password-protected" text
+        }
         if ($result[$field] === '' && $value !== '') {
             $result[$field] = $value;
             $result['sources'][$field] = $source;
@@ -589,11 +621,15 @@ function fetch_article_meta(string $url): array
                 if (!is_array($post) || !isset($post['title'])) {
                     throw new RuntimeException('unexpected answer');
                 }
+                // Protected posts keep their title ("Geschützt: …" is added only on the page).
                 $set('title', html_to_text($post['title']['rendered'] ?? ''), 'WordPress post title');
+                $protected = !empty($post['content']['protected']) || !empty($post['excerpt']['protected']);
                 // Excerpts end with "[…]" or a "read more" link; drop both.
                 $excerpt = preg_replace('#<a\b[^>]*class=["\'][^"\']*more-link.*?</a>#is', '', $post['excerpt']['rendered'] ?? '');
                 $excerpt = preg_replace('/\s*(\[(…|&hellip;|\.\.\.)\]|\[&#8230;\])\s*$/u', '…', html_to_text($excerpt));
-                $set('description', $excerpt, 'WordPress excerpt');
+                if (!$protected) {
+                    $set('description', $excerpt, 'WordPress excerpt');
+                }
                 $media = $post['_embedded']['wp:featuredmedia'][0] ?? null;
                 if (is_array($media)) {
                     $sizes = $media['media_details']['sizes'] ?? [];
@@ -601,10 +637,10 @@ function fetch_article_meta(string $url): array
                     $img = $sizes['medium_large']['source_url'] ?? $sizes['large']['source_url'] ?? $media['source_url'] ?? '';
                     $set('image', $img, 'WordPress featured image');
                 }
-                $set('image', first_image_in_html($post['content']['rendered'] ?? '', $url), 'first image in the WordPress post');
-                $set('description', mb_strimwidth(html_to_text(
-                    preg_match('#<p\b[^>]*>(.*?)</p>#is', $post['content']['rendered'] ?? '', $pm) ? $pm[1] : ''), 0, 300, '…'),
-                    'first paragraph of the WordPress post');
+                if (!$protected) {
+                    $set('image', first_image_in_html(strip_forms($post['content']['rendered'] ?? ''), $url), 'first image in the WordPress post');
+                    $set('description', first_paragraph($post['content']['rendered'] ?? ''), 'first paragraph of the WordPress post');
+                }
             } catch (Throwable $e) {
                 $result['notes'][] = 'WordPress REST API not usable (' . $e->getMessage() . ')';
             }
@@ -615,11 +651,13 @@ function fetch_article_meta(string $url): array
     $article = preg_match('#<article\b.*?</article>#is', $html, $am) ? $am[0] : $html;
     $content = preg_match('#<div\b[^>]*class=["\'][^"\']*(entry-content|post-content|article-content)[^"\']*["\'][^>]*>(.*)#is', $article, $cm)
         ? $cm[2] : $article;
-    $set('image', first_image_in_html($article, $url), 'first image on the page');
-    $set('description', mb_strimwidth(html_to_text(
-        preg_match('#<p\b[^>]*>(.*?)</p>#is', $content, $pm) ? $pm[1] : ''), 0, 300, '…'), 'first paragraph on the page');
+    if (str_contains($html, 'post-password-form') || str_contains($html, 'action=postpass')) {
+        $result['notes'][] = 'the article is password-protected, so its text and images are not public';
+    }
+    $set('image', first_image_in_html(strip_forms($article), $url), 'first image on the page');
+    $set('description', first_paragraph($content), 'first paragraph on the page');
     if ($result['title'] === '' && preg_match('#<title[^>]*>(.*?)</title>#is', $html, $t)) {
-        $title = html_to_text($t[1]);
+        $title = preg_replace('/^(Geschützt|Privat|Protected|Private):\s*/u', '', html_to_text($t[1]));
         // "Post title – Site name": drop the site name.
         $site = $meta['og:site_name'] ?? '';
         $parts = preg_split('/\s+[–—|-]\s+/u', $title);
