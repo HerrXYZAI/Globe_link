@@ -26,7 +26,13 @@ password-protected configuration view.
     suggestions, with a suggested name (from the file's `<name>`, or else the file
     name), distance and point count. You can edit the names, add files one at a time
     or select several, and hide files you don't want with "Ignore".
-  - **Markers table:** add a single point by pasting its coordinates, for example
+  - **Markers table:** add a single point. Type a city in **Find a city or place**:
+    suggestions from a built-in list of about 7,300 cities appear as you type, and
+    picking one fills in the name and coordinates. Add a country or region after a
+    comma to narrow it down, e.g. `Springfield, US`. **Search online** asks
+    OpenStreetMap (Nominatim) for smaller places, one request per click, as its usage
+    policy requires. `geocoder_url` in `config.php` sets the search service. You can
+    also paste coordinates, for example
     `47.4058, 10.2793`, `47°24'20.9"N 10°16'45.5"E` or `47° 24.348' N, 10° 16.758' E`.
     Then set a preview text, a picture (URL or upload) and an optional link.
 
@@ -39,9 +45,11 @@ The configuration view has a **Display** section that applies to all tracks:
   its width per side.
 - **Glow:** a soft halo, either in each track's own colour or in one colour for all
   tracks, with size and strength.
+- **Markers:** the blinking (pulsing ring) effect on or off.
 - **Map:** country borders (colour, opacity), country names and city names in German
-  or English. More cities appear as you zoom in, and names that would overlap or cover
-  a marker are hidden.
+  or English. More cities appear as you zoom in. A name that would overlap a marker or
+  another name moves to a free spot (left, above or below); it is hidden only when no
+  spot is free.
 
 Borders and names come from [Natural Earth](https://www.naturalearthdata.com/) (public
 domain) and are shipped in `assets/vendor/geo/`. `python3 tools/build-geodata.py`
