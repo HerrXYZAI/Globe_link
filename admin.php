@@ -174,6 +174,50 @@ if ($loggedIn && $action === 'logout') {
     redirect();
 }
 
+// ---------------------------------------------------------------- place search (online)
+// GET admin.php?geocode=<query> – used by the marker form when the local place list has
+// no match. Asks OpenStreetMap Nominatim once per click (its usage policy allows no
+// search-as-you-type and at most one request per second).
+if ($loggedIn && isset($_GET['geocode'])) {
+    header('Content-Type: application/json; charset=utf-8');
+    $q = trim((string)$_GET['geocode']);
+    if (mb_strlen($q) < 2) {
+        echo json_encode(['results' => []]);
+        exit;
+    }
+    $wait = ($_SESSION['geocode_last'] ?? 0) + 1.1 - microtime(true);
+    if ($wait > 0) {
+        usleep((int)($wait * 1e6));
+    }
+    $_SESSION['geocode_last'] = microtime(true);
+    session_write_close();
+    try {
+        $url = (string)cfg('geocoder_url');
+        $json = http_get($url . (str_contains($url, '?') ? '&' : '?') . http_build_query([
+            'q' => $q, 'format' => 'jsonv2', 'limit' => 8, 'addressdetails' => 1,
+            'accept-language' => display_settings()['label_language'],
+        ]), 15);
+        $results = [];
+        foreach (json_decode($json, true) ?: [] as $r) {
+            $a = $r['address'] ?? [];
+            $name = ($r['name'] ?? '') ?: explode(',', (string)($r['display_name'] ?? ''))[0];
+            $results[] = [
+                'name' => $name,
+                'lat' => round((float)$r['lat'], 6),
+                'lng' => round((float)$r['lon'], 6),
+                'region' => $a['state'] ?? $a['county'] ?? $a['region'] ?? '',
+                'country' => $a['country'] ?? '',
+                'type' => str_replace('_', ' ', (string)($r['addresstype'] ?? $r['type'] ?? '')),
+            ];
+        }
+        echo json_encode(['results' => $results], JSON_UNESCAPED_UNICODE);
+    } catch (Throwable $e) {
+        http_response_code(502);
+        echo json_encode(['error' => $e->getMessage()], JSON_UNESCAPED_UNICODE);
+    }
+    exit;
+}
+
 // ---------------------------------------------------------------- actions
 if ($loggedIn && $action !== '') {
     require_csrf();
@@ -502,6 +546,17 @@ $title = cfg('site_title') . ' – Configuration';
         <h2><?= $id ? 'Edit marker' : 'Add marker' ?></h2>
         <input type="hidden" name="csrf" value="<?= h($csrf) ?>">
         <input type="hidden" name="id" value="<?= (int)$m['id'] ?>">
+        <div class="place-search" data-lang="<?= h(display_settings()['label_language']) ?>">
+            <label for="place-search">Find a city or place
+                <small>Fills in the name and GPS coordinates below.</small></label>
+            <div class="place-search-row">
+                <input type="search" id="place-search" autocomplete="off" placeholder="e.g. München, Siem Reap, Kiruna"
+                       role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="place-results">
+                <button type="button" class="place-online" title="Search OpenStreetMap for smaller places">Search online</button>
+            </div>
+            <ul id="place-results" role="listbox" hidden></ul>
+            <p class="place-status small muted" aria-live="polite"></p>
+        </div>
         <div class="grid">
             <label class="wide">Name
                 <input name="name" value="<?= h($m['name']) ?>" placeholder="Shown as title in the hover window">
@@ -790,6 +845,12 @@ $title = cfg('site_title') . ' – Configuration';
                 </div>
             </fieldset>
             <fieldset>
+                <legend>Markers</legend>
+                <input type="hidden" name="display[marker_pulse]" value="0">
+                <label class="check"><input type="checkbox" name="display[marker_pulse]" value="1" <?= $d['marker_pulse'] ? 'checked' : '' ?>>
+                    <strong>Blinking effect</strong> – pulsing ring around every marker</label>
+            </fieldset>
+            <fieldset>
                 <legend>Map</legend>
                 <div class="option">
                     <input type="hidden" name="display[borders_enabled]" value="0">
@@ -836,6 +897,7 @@ $title = cfg('site_title') . ' – Configuration';
     </section>
 <?php endif ?>
 </main>
+<script src="assets/admin.js"></script>
 <script>
 document.querySelectorAll('[data-select-all]').forEach(function (box) {
     box.addEventListener('change', function () {

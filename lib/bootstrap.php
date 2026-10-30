@@ -855,6 +855,7 @@ const DISPLAY_DEFAULTS = [
     'glow_color' => '#ffffff',
     'glow_size' => 8,                // px on each side
     'glow_opacity' => 0.45,
+    'marker_pulse' => true,          // pulsing ring around markers
     'borders_enabled' => true,
     'border_color' => '#ffffff',
     'border_opacity' => 0.55,

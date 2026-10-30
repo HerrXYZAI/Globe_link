@@ -7,6 +7,8 @@ Build the compact map overlay data in assets/vendor/geo/ from Natural Earth
   borders-10m.json   land borders between countries, detailed (zoomed in)
   countries.json     country label positions:  [name_de, name_en, lat, lng, min_zoom]
   cities.json        populated places:          [name_de, name_en, lat, lng, min_zoom, capital]
+  places.json        place search in the configuration view:
+                     [name_de, name_en, lat, lng, country_de, country_en, region, population, country codes]
 
 Usage:  python3 tools/build-geodata.py [folder with the Natural Earth .geojson files]
 Files that are missing in that folder are downloaded from GitHub.
@@ -62,8 +64,10 @@ def main():
     write('borders-10m.json', lines(load(folder, 'ne_10m_admin_0_boundary_lines_land'), 3))
 
     countries = []
+    country_names = {}
     for f in load(folder, 'ne_50m_admin_0_countries')['features']:
         p = f['properties']
+        country_names[p['ADM0_A3']] = (p.get('NAME_DE') or p['NAME'], p.get('NAME_EN') or p['NAME'])
         if p.get('LABEL_X') is None:
             continue
         en = p.get('NAME_EN') or p['NAME']
@@ -72,8 +76,14 @@ def main():
     write('countries.json', countries)
 
     cities = []
+    places = []
     for f in load(folder, 'ne_10m_populated_places')['features']:
         p = f['properties']
+        en = p.get('NAME_EN') or p['NAME']
+        country_de, country_en = country_names.get(p['ADM0_A3'], (p['ADM0NAME'], p['ADM0NAME']))
+        places.append([p.get('NAME_DE') or en, en, round(p['LATITUDE'], 5), round(p['LONGITUDE'], 5),
+                       country_de, country_en, p.get('ADM1NAME') or '', int(p.get('POP_MAX') or 0),
+                       ' '.join(sorted({c for c in (p.get('ISO_A2'), p.get('ADM0_A3'), p.get('SOV_A3')) if c and c != '-99'}))])
         if (p.get('MIN_ZOOM') or 99) > 7:
             continue
         en = p.get('NAME_EN') or p['NAME']
@@ -82,6 +92,8 @@ def main():
     # Most important first: the globe keeps the first labels when they overlap.
     cities.sort(key=lambda c: (c[4], -c[5]))
     write('cities.json', cities)
+    places.sort(key=lambda c: -c[7])
+    write('places.json', places)
 
 
 if __name__ == '__main__':

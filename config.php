@@ -27,6 +27,11 @@ $config = [
     // Folder suggested in the "Scan folder" form (relative to tracks_base_dir or absolute).
     'scan_default_dir' => 'tracks',
 
+    // Online place search in the marker form ("Search online"): a Nominatim-compatible
+    // search endpoint. The public OpenStreetMap server allows at most one request per
+    // second and no search-as-you-type, which the configuration view respects.
+    'geocoder_url' => 'https://nominatim.openstreetmap.org/search',
+
     // Initial admin password. Change it after the first login in the
     // configuration view (the new password is stored hashed in the database
     // and then takes precedence over this value).

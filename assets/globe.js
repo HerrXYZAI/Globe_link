@@ -21,6 +21,7 @@
     let display = {
         track_width: 3, outline_enabled: true, outline_color: '#000000', outline_width: 1.5,
         glow_enabled: false, glow_use_track_color: true, glow_color: '#ffffff', glow_size: 8, glow_opacity: 0.45,
+        marker_pulse: true,
         borders_enabled: true, border_color: '#ffffff', border_opacity: 0.55,
         country_names_enabled: true, city_names_enabled: true, label_language: 'de',
     };
@@ -293,10 +294,46 @@
     function labelElement(label) {
         const el = document.createElement('div');
         el.className = `map-label ${label.kind}${label.capital ? ' capital' : ''}`;
+        el.dataset.pos = label.pos || 'r';
         const span = document.createElement('span');
         span.textContent = label.name;
         el.append(span);
+        label.el = el; // updateLabels moves the text by changing data-pos
         return el;
+    }
+
+    // Text widths measured once with the same font as the CSS (.map-label).
+    const measureCtx = document.createElement('canvas').getContext('2d');
+    function textWidth(label) {
+        if (label.width === undefined) {
+            if (label.kind === 'country') {
+                measureCtx.font = '600 12px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+                // uppercase + letter-spacing .12em
+                label.width = measureCtx.measureText(label.name.toUpperCase()).width + label.name.length * 1.44;
+            } else {
+                measureCtx.font = `${label.capital ? 600 : 400} 12px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
+                label.width = measureCtx.measureText(label.name).width;
+            }
+        }
+        return label.width;
+    }
+
+    /**
+     * Screen boxes [x0, y0, x1, y1] of a label for each possible text position, in order of
+     * preference. Cities: right, left, above, below the dot; countries: centred, above, below.
+     */
+    function labelPlacements(label, x, y) {
+        const tw = textWidth(label);
+        if (label.kind === 'country') {
+            const box = (dy) => [x - tw / 2 - 3, y + dy - 8, x + tw / 2 + 3, y + dy + 8];
+            return [['c', box(0)], ['u', box(-17)], ['d', box(17)]];
+        }
+        return [
+            ['r', [x + 4, y - 8, x + 8 + tw, y + 8]],
+            ['l', [x - 8 - tw, y - 8, x - 4, y + 8]],
+            ['t', [x - tw / 2 - 2, y - 22, x + tw / 2 + 2, y - 5]],
+            ['b', [x - tw / 2 - 2, y + 5, x + tw / 2 + 2, y + 22]],
+        ];
     }
 
     function scheduleLabels() {
@@ -313,7 +350,9 @@
 
     /**
      * Pick the names to show: by importance for the current zoom level, only on the
-     * visible side of the globe, and never overlapping each other on screen.
+     * visible side of the globe. A name that would overlap a marker or another name is
+     * moved to its next free position (see labelPlacements) and only left out when none
+     * is free.
      */
     function updateLabels() {
         if (!globe || (!labelSets.countries.length && !labelSets.cities.length)) return;
@@ -323,31 +362,50 @@
         const zoom = Math.log2(1 / alt) + 1.6;
         const horizon = deg(Math.acos(1 / (1 + alt)));
         const viewRadius = Math.min(horizon, alt * 55 + 3);
+        const onFront = (l) => angularDistance(pov.lat, pov.lng, l.lat, l.lng) < viewRadius;
         const candidates = [
-            ...labelSets.countries.filter((l) => l.minZoom <= zoom + 1.6),
-            ...labelSets.cities.filter((l) => l.minZoom <= zoom + 0.5),
+            ...labelSets.countries.filter((l) => l.minZoom <= zoom + 2.2),
+            ...labelSets.cities.filter((l) => l.minZoom <= zoom + 1.2),
         ]
-            .filter((l) => angularDistance(pov.lat, pov.lng, l.lat, l.lng) < viewRadius)
+            .filter(onFront)
             // Countries before cities of the same importance; capitals before other cities.
             .sort((a, b) => (a.minZoom - (a.kind === 'country' ? 0.5 : 0)) - (b.minZoom - (b.kind === 'country' ? 0.5 : 0))
                 || (b.capital - a.capital));
 
         const w = window.innerWidth;
         const h = window.innerHeight;
-        // Keep the markers free: names never cover them.
-        const taken = markers.map((m) => globe.getScreenCoords(m.lat, m.lng, 0))
-            .filter(Boolean).map((p) => [p.x - 12, p.y - 12, p.x + 12, p.y + 12]);
+        const overlaps = (box, list) => list.some((t) => box[0] < t[2] && box[2] > t[0] && box[1] < t[3] && box[3] > t[1]);
+        // Markers stay free: names move away from them.
+        const markerBoxes = markers
+            .filter((m) => angularDistance(pov.lat, pov.lng, m.lat, m.lng) < horizon)
+            .map((m) => globe.getScreenCoords(m.lat, m.lng, 0))
+            .filter(Boolean)
+            .map((p) => [p.x - 12, p.y - 12, p.x + 12, p.y + 12]);
+        const taken = [...markerBoxes];
+        const labelBoxes = [];
         const result = [];
         for (const l of candidates) {
-            if (result.length >= 150) break;
+            if (result.length >= 250) break;
             const p = globe.getScreenCoords(l.lat, l.lng, 0);
             if (!p || p.x < 0 || p.y < 0 || p.x > w || p.y > h) continue;
-            const textW = l.name.length * (l.kind === 'country' ? 8.5 : 6.8);
-            const box = l.kind === 'country'
-                ? [p.x - textW / 2 - 4, p.y - 10, p.x + textW / 2 + 4, p.y + 10]
-                : [p.x - 5, p.y - 10, p.x + 9 + textW, p.y + 10];
-            if (taken.some((t) => box[0] < t[2] && box[2] > t[0] && box[1] < t[3] && box[3] > t[1])) continue;
+            // A city's dot cannot move: skip the city if another name covers the dot. A dot
+            // under a marker is fine (the marker is drawn on top), only its name moves away.
+            const dot = [p.x - 3, p.y - 3, p.x + 3, p.y + 3];
+            if (l.kind === 'city' && overlaps(dot, labelBoxes)) continue;
+            const free = labelPlacements(l, p.x, p.y)
+                .find(([, box]) => box[0] >= 0 && box[2] <= w && box[1] >= 0 && box[3] <= h && !overlaps(box, taken));
+            if (!free) continue;
+            const [pos, box] = free;
             taken.push(box);
+            labelBoxes.push(box);
+            if (l.kind === 'city') {
+                taken.push(dot);
+                labelBoxes.push(dot);
+            }
+            if (l.pos !== pos) {
+                l.pos = pos;
+                if (l.el) l.el.dataset.pos = pos;
+            }
             result.push(l);
         }
         const changed = result.length !== shownLabels.length || result.some((l, i) => l !== shownLabels[i]);
@@ -476,7 +534,8 @@
             .htmlElementsData(markers)
             .htmlLat('lat')
             .htmlLng('lng')
-            .htmlAltitude(0)
+            // Markers float a hair above the names so they are always drawn on top of them.
+            .htmlAltitude((d) => (d.kind === 'marker' ? 0.00002 : 0))
             .htmlTransitionDuration(0)
             .htmlElement((d) => (d.kind === 'marker' ? markerElement(d) : labelElement(d)))
             // Country borders: outline only, no surfaces.
@@ -542,6 +601,7 @@
         }
         linkTargetBlank = cfg.linkTargetBlank !== false;
         if (cfg.display) display = { ...display, ...cfg.display };
+        document.body.classList.toggle('no-marker-pulse', !display.marker_pulse);
         tracks = (cfg.tracks || []).map((t) => ({ ...t, kind: 'track' }));
         markers = (cfg.markers || []).map((m) => ({ ...m, kind: 'marker' }));
         buildPaths();

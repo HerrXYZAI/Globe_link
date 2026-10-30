@@ -78,3 +78,20 @@ input.compact { margin-top: 0 !important; padding: .3rem .5rem !important; min-w
 .display-form .row { display: flex; flex-wrap: wrap; gap: 0 1.25rem; align-items: flex-end; padding-left: 1.6rem; }
 .display-form .row label.check { margin-bottom: 1.3rem; }
 select { display: block; margin-top: .3rem; padding: .5rem .6rem; font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; }
+
+/* Place search in the marker form */
+.place-search { position: relative; margin-bottom: 1.25rem; padding: .9rem 1rem; border: 1px dashed var(--border); border-radius: 8px; }
+.place-search label { margin-bottom: .4rem; }
+.place-search-row { display: flex; gap: .5rem; }
+.place-search-row input { margin-top: 0 !important; flex: 1; }
+.place-search-row button { white-space: nowrap; }
+#place-results { position: absolute; z-index: 10; left: 1rem; right: 1rem; margin: .25rem 0 0; padding: .25rem; list-style: none;
+                 background: var(--card); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, .18); }
+#place-results li[role=option] { display: grid; grid-template-columns: auto 1fr; gap: 0 .5rem; padding: .45rem .6rem; border-radius: 6px; cursor: pointer; }
+#place-results li[role=option] small { grid-column: 1 / -1; }
+#place-results li.active, #place-results li[role=option]:hover { background: var(--bg); outline: 1px solid var(--accent); }
+#place-results li.credit { padding: .3rem .6rem; }
+.place-status:empty { display: none; }
+.place-status { margin: .5rem 0 0; }
+@keyframes flash-fill { from { background: rgba(37, 99, 235, .25); } to { background: var(--bg); } }
+.flash-fill { animation: flash-fill 1.2s ease-out; }
