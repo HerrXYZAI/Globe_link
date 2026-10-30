@@ -844,6 +844,54 @@ function handle_image_upload(array $file): ?string
     return rtrim((string)cfg('media_url'), '/') . '/' . $name;
 }
 
+/** Display settings edited in the configuration view, with their defaults. */
+const DISPLAY_DEFAULTS = [
+    'track_width' => 3,              // px
+    'outline_enabled' => true,       // second colour around every track (contrast to the map)
+    'outline_color' => '#000000',
+    'outline_width' => 1.5,          // px on each side
+    'glow_enabled' => false,
+    'glow_use_track_color' => true,  // glow in each track's own colour, or in glow_color
+    'glow_color' => '#ffffff',
+    'glow_size' => 8,                // px on each side
+    'glow_opacity' => 0.45,
+    'borders_enabled' => true,
+    'border_color' => '#ffffff',
+    'border_opacity' => 0.55,
+    'country_names_enabled' => true,
+    'city_names_enabled' => true,
+    'label_language' => 'de',        // de | en
+];
+
+/** Current display settings (stored as JSON in the settings table), always complete and valid. */
+function display_settings(): array
+{
+    $stored = json_decode((string)setting('display', '{}'), true);
+    return sanitize_display_settings(array_merge(DISPLAY_DEFAULTS, is_array($stored) ? $stored : []));
+}
+
+function sanitize_display_settings(array $in): array
+{
+    $out = [];
+    foreach (DISPLAY_DEFAULTS as $key => $default) {
+        $v = $in[$key] ?? $default;
+        if (is_bool($default)) {
+            $out[$key] = filter_var($v, FILTER_VALIDATE_BOOLEAN);
+        } elseif (str_ends_with($key, '_color')) {
+            $out[$key] = is_string($v) && preg_match('/^#[0-9a-fA-F]{6}$/', $v) ? strtolower($v) : $default;
+        } elseif (is_numeric($default)) {
+            $limits = [
+                'track_width' => [1, 12], 'outline_width' => [0.5, 6], 'glow_size' => [2, 30],
+                'glow_opacity' => [0.05, 1], 'border_opacity' => [0.1, 1],
+            ][$key];
+            $out[$key] = is_numeric($v) ? max($limits[0], min($limits[1], round((float)$v, 2))) : $default;
+        } else {
+            $out[$key] = in_array($v, ['de', 'en'], true) ? $v : $default;
+        }
+    }
+    return $out;
+}
+
 /** Everything the globe page needs: display settings, visible tracks (with geometry) and markers. */
 function globe_payload(): array
 {
@@ -900,6 +948,7 @@ function globe_payload(): array
         'bumpImage' => cfg('bump_image'),
         'backgroundImage' => cfg('background_image'),
         'linkTargetBlank' => (bool)cfg('link_target_blank'),
+        'display' => display_settings(),
         'tracks' => $tracks,
         'markers' => $markers,
     ];

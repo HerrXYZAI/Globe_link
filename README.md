@@ -30,6 +30,23 @@ password-protected configuration view.
     `47.4058, 10.2793`, `47°24'20.9"N 10°16'45.5"E` or `47° 24.348' N, 10° 16.758' E`.
     Then set a preview text, a picture (URL or upload) and an optional link.
 
+## Display settings
+
+The configuration view has a **Display** section that applies to all tracks:
+
+- **Line width** of the tracks.
+- **Outline:** a second colour around every track for more contrast to the map, with
+  its width per side.
+- **Glow:** a soft halo, either in each track's own colour or in one colour for all
+  tracks, with size and strength.
+- **Map:** country borders (colour, opacity), country names and city names in German
+  or English. More cities appear as you zoom in, and names that would overlap or cover
+  a marker are hidden.
+
+Borders and names come from [Natural Earth](https://www.naturalearthdata.com/) (public
+domain) and are shipped in `assets/vendor/geo/`. `python3 tools/build-geodata.py`
+rebuilds these files.
+
 ## Requirements
 
 - PHP 8.1 or newer with `pdo_sqlite` and `simplexml` (both are enabled by default on most hosts)
@@ -144,6 +161,7 @@ lib/bootstrap.php   database, GPX/KML/GeoJSON parsing, caching
 tools/              static export for GitHub Pages / static hosting
 assets/             JS/CSS and example preview images
 assets/vendor/      globe.gl library and earth/sky images (MIT), served locally, no CDN needed
+assets/vendor/geo/  country borders, country and city names (Natural Earth, public domain)
 tracks/examples/    example GPX files
 tracks/uploads/     GPS files uploaded in the configuration view
 media/              preview images uploaded in the configuration view

@@ -71,3 +71,10 @@ h3 { font-size: 1rem; margin: 1.5rem 0 .75rem; }
 .inline-check { margin: 0; }
 input.compact { margin-top: 0 !important; padding: .3rem .5rem !important; min-width: 200px; }
 .field-note { grid-column: 1 / -1; margin: -.5rem 0 1rem; }
+.display-form fieldset { border: 1px solid var(--border); border-radius: 8px; padding: .75rem 1rem .25rem; margin: 0 0 1rem; }
+.display-form legend { font-weight: 700; padding: 0 .4rem; }
+.display-form label:not(.check) { max-width: 220px; }
+.display-form .option { border-top: 1px solid var(--border); padding-top: .75rem; margin-top: .25rem; }
+.display-form .row { display: flex; flex-wrap: wrap; gap: 0 1.25rem; align-items: flex-end; padding-left: 1.6rem; }
+.display-form .row label.check { margin-bottom: 1.3rem; }
+select { display: block; margin-top: .3rem; padding: .5rem .6rem; font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; }

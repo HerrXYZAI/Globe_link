@@ -70,3 +70,15 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #000; color:
 @keyframes marker-pulse { from { transform: scale(1); opacity: .9; } to { transform: scale(2.6); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .marker::after { animation: none; } }
 #track-list .dot.pin { border: 2px solid #fff; width: 12px; height: 12px; }
+
+/* Country and city names (zero-size anchor exactly at the coordinate) */
+.map-label { position: relative; width: 0; height: 0; pointer-events: none; color: #fff; white-space: nowrap;
+             text-shadow: 0 0 3px #000, 0 0 6px rgba(0, 0, 0, .9), 0 1px 2px #000; }
+.map-label span { position: absolute; line-height: 1; }
+.map-label.country span { transform: translate(-50%, -50%); font-size: 12px; font-weight: 600; letter-spacing: .12em;
+                          text-transform: uppercase; color: rgba(255, 255, 255, .92); }
+.map-label.city::before { content: ""; position: absolute; left: -2.5px; top: -2.5px; width: 5px; height: 5px;
+                          border-radius: 50%; background: #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, .7); }
+.map-label.city span { left: 6px; top: -6px; font-size: 12px; }
+.map-label.city.capital span { font-weight: 600; }
+.map-label.city.capital::before { background: #ffd166; }

@@ -327,6 +327,21 @@ if ($loggedIn && $action !== '') {
                     ->execute([(int)$_POST['id']]);
                 redirect('#markers');
 
+            case 'display_save':
+                $posted = [];
+                foreach (DISPLAY_DEFAULTS as $key => $default) {
+                    // Unchecked checkboxes are not posted; a hidden "0" field comes first.
+                    $posted[$key] = $_POST['display'][$key] ?? (is_bool($default) ? false : $default);
+                }
+                set_setting('display', json_encode(sanitize_display_settings($posted)));
+                flash('Display settings saved.');
+                redirect('#display');
+
+            case 'display_reset':
+                set_setting('display', '{}');
+                flash('Display settings reset to the defaults.');
+                redirect('#display');
+
             case 'password':
                 $new = (string)($_POST['new_password'] ?? '');
                 if (!check_password((string)($_POST['current_password'] ?? ''))) {
@@ -736,6 +751,77 @@ $title = cfg('site_title') . ' – Configuration';
             </tbody>
         </table>
         </div>
+    </section>
+
+    <?php $d = display_settings(); ?>
+    <section class="card" id="display">
+        <div class="section-head"><h2>Display</h2></div>
+        <form method="post" class="display-form">
+            <input type="hidden" name="csrf" value="<?= h($csrf) ?>">
+            <fieldset>
+                <legend>GPS tracks (all tracks)</legend>
+                <label>Line width (px)
+                    <input type="number" name="display[track_width]" min="1" max="12" step="0.5" value="<?= h((string)$d['track_width']) ?>">
+                </label>
+                <div class="option">
+                    <input type="hidden" name="display[outline_enabled]" value="0">
+                    <label class="check"><input type="checkbox" name="display[outline_enabled]" value="1" <?= $d['outline_enabled'] ? 'checked' : '' ?>>
+                        <strong>Outline</strong> – second colour around every track for more contrast to the map</label>
+                    <div class="row">
+                        <label>Colour <input type="color" name="display[outline_color]" value="<?= h($d['outline_color']) ?>"></label>
+                        <label>Width per side (px)
+                            <input type="number" name="display[outline_width]" min="0.5" max="6" step="0.5" value="<?= h((string)$d['outline_width']) ?>"></label>
+                    </div>
+                </div>
+                <div class="option">
+                    <input type="hidden" name="display[glow_enabled]" value="0">
+                    <label class="check"><input type="checkbox" name="display[glow_enabled]" value="1" <?= $d['glow_enabled'] ? 'checked' : '' ?>>
+                        <strong>Glow</strong> – soft halo around every track</label>
+                    <div class="row">
+                        <input type="hidden" name="display[glow_use_track_color]" value="0">
+                        <label class="check"><input type="checkbox" name="display[glow_use_track_color]" value="1" <?= $d['glow_use_track_color'] ? 'checked' : '' ?>>
+                            in the track's own colour</label>
+                        <label>…or this colour <input type="color" name="display[glow_color]" value="<?= h($d['glow_color']) ?>"></label>
+                        <label>Size per side (px)
+                            <input type="number" name="display[glow_size]" min="2" max="30" step="1" value="<?= h((string)$d['glow_size']) ?>"></label>
+                        <label>Strength (0.05–1)
+                            <input type="number" name="display[glow_opacity]" min="0.05" max="1" step="0.05" value="<?= h((string)$d['glow_opacity']) ?>"></label>
+                    </div>
+                </div>
+            </fieldset>
+            <fieldset>
+                <legend>Map</legend>
+                <div class="option">
+                    <input type="hidden" name="display[borders_enabled]" value="0">
+                    <label class="check"><input type="checkbox" name="display[borders_enabled]" value="1" <?= $d['borders_enabled'] ? 'checked' : '' ?>>
+                        <strong>Country borders</strong></label>
+                    <div class="row">
+                        <label>Colour <input type="color" name="display[border_color]" value="<?= h($d['border_color']) ?>"></label>
+                        <label>Opacity (0.1–1)
+                            <input type="number" name="display[border_opacity]" min="0.1" max="1" step="0.05" value="<?= h((string)$d['border_opacity']) ?>"></label>
+                    </div>
+                </div>
+                <div class="option">
+                    <input type="hidden" name="display[country_names_enabled]" value="0">
+                    <label class="check"><input type="checkbox" name="display[country_names_enabled]" value="1" <?= $d['country_names_enabled'] ? 'checked' : '' ?>>
+                        <strong>Country names</strong></label>
+                    <input type="hidden" name="display[city_names_enabled]" value="0">
+                    <label class="check"><input type="checkbox" name="display[city_names_enabled]" value="1" <?= $d['city_names_enabled'] ? 'checked' : '' ?>>
+                        <strong>City names</strong> – more cities appear as you zoom in</label>
+                    <label>Language of the names
+                        <select name="display[label_language]">
+                            <option value="de" <?= $d['label_language'] === 'de' ? 'selected' : '' ?>>Deutsch</option>
+                            <option value="en" <?= $d['label_language'] === 'en' ? 'selected' : '' ?>>English</option>
+                        </select>
+                    </label>
+                </div>
+            </fieldset>
+            <div class="actions">
+                <button name="action" value="display_save" class="primary">Save display settings</button>
+                <button name="action" value="display_reset" onclick="return confirm('Reset all display settings to the defaults?')">Reset to defaults</button>
+                <a href="index.html" target="_blank">Open globe ↗</a>
+            </div>
+        </form>
     </section>
 
     <section class="card narrow">
